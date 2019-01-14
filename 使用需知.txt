@@ -1,0 +1,16 @@
+inface-v1.0.jar包含依赖
+inface-nolib-v1.0.jar不包含依赖
+
+包含依赖如下：
+okhttp:3.10.0
+gson:2.8.2
+converter-gson:2.4.0
+retrofit:2.4.0
+okio:1.14.0
+
+打开摄像头，获取摄像头预览数据，尺寸不宜过大，一般在200左右像素即可正确高速识别
+
+调用inface接口，初始化，转向yuv数据到bitmap，调用match接口进行比对，match接口为异步线程，所以需要自己控制单线程运行。
+
+可参考测试案例代码LoginActivity.java
+
