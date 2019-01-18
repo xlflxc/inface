@@ -83,45 +83,52 @@ import retrofit2.Response;
 public class LoginActivity extends BasicActivity {
 
     Activity main;
-    int leave=15;
+    TextureView mPreviewView;
+    Size mPreviewSize;
+    String mCameraId;
+    CameraDevice mCameraDevice;
+    CaptureRequest.Builder mPreviewBuilder;
+    CaptureRequest mCaptureRequest;
+    ImageReader mImageReader;
+    CameraCaptureSession mPreviewSession;
+    Handler mhandler=new Handler();
+    Handler mhandler2=new Handler();
+    boolean is_match=false;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        main=this;
+        main = this;
         goMain();
 
+        //15秒超时关闭
+        final int[] leave = {15};
         new Thread(new Runnable() {
             @Override
             public void run() {
-                while (leave>0) {
-                    leave -= 1;
+                while (leave[0] > 0) {
+                    leave[0] -= 1;
                     try {
                         Thread.sleep(1000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
                 }
-                if (mPreviewSession != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        mPreviewSession.close();
-                    }
 
-                    if(GetToken()==null) {
-                        Intent in = new Intent();
-                        in.setClassName(getApplicationContext(), "com.chunyun.android.WaitActivity");
-                        startActivity(in);
-                    }
+                if(main.isFinishing()==false) {
+                    closeCamera();
+                    Intent in = new Intent();
+                    in.setClassName(getApplicationContext(), "com.chunyun.android.WaitActivity");
+                    startActivity(in);
+                    main.finish();
                 }
             }
         }).start();
     }
 
     void goMain() {
-        initCamera();
-    }
 
-    void initCamera() {
+        //渲染界面
         LAYOUT layout = new LAYOUT(this, LAYOUT_TYPE.top_bottom, false, null, new float[]{100, 0});
 
         mPreviewView = new TextureView(this);
@@ -149,38 +156,59 @@ public class LoginActivity extends BasicActivity {
         });
 
         layout.findItem("top").setContent(new BUTTON(main,"注册人脸")
-        .setClick(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if( mPreviewSession!=null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        mPreviewSession.close();
+                .setClick(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        closeCamera();
+                        Intent in = new Intent();
+                        in.setClassName(getApplicationContext(), "com.chunyun.android.RegisterActivity");
+                        startActivity(in);
+                        main.finish();
                     }
-                }
-
-                Intent in = new Intent();
-                in.setClassName(getApplicationContext(), "com.chunyun.android.RegisterActivity");
-                startActivity(in);
-            }
-        }));
+                }));
         layout.findItem("bottom").setContent(mPreviewView);
         layout.render();
-
     }
 
-    TextureView mPreviewView;
-    Size mPreviewSize;
-    String mCameraId;
-    CameraDevice mCameraDevice;
-    CaptureRequest.Builder mPreviewBuilder;
-    CaptureRequest mCaptureRequest;
-    ImageReader mImageReader;
-    CameraCaptureSession mPreviewSession;
-    Handler mhandler=new Handler();
-    Handler mhandler2=new Handler();
-    boolean is_match=false;
-    int have_face=0;
+    //关闭摄像
+    void closeCamera(){
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            if(mPreviewSession!=null){
+                mPreviewSession.close();
+            }
+            if(mCameraDevice!=null){
+                mCameraDevice.close();
+            }
+        }
+    }
 
+    //关闭预览
+    void closePreview(){
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                mPreviewSession.stopRepeating();
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
+        } else {
+
+        }
+    }
+
+    //重启预览
+    void restartPreview() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                mPreviewSession.setRepeatingRequest(mCaptureRequest, null, mhandler);
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
+        } else {
+
+        }
+    }
+
+    //设置摄像头
     void setupCamera() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 
@@ -228,6 +256,7 @@ public class LoginActivity extends BasicActivity {
         }
     }
 
+    //打开摄像头
     void openCamera() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
 
@@ -264,6 +293,7 @@ public class LoginActivity extends BasicActivity {
         }
     }
 
+    //启动预览
     void startPreview() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             SurfaceTexture mSurfaceTexture = mPreviewView.getSurfaceTexture();
@@ -314,12 +344,7 @@ public class LoginActivity extends BasicActivity {
                                     mPreviewSession = session;
 
                                     //设置反复捕获数据的请求，这样预览界面就会一直有数据显示
-                                    mPreviewSession.setRepeatingRequest(mCaptureRequest, new CameraCaptureSession.CaptureCallback() {
-                                        @Override
-                                        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-                                           onCameraImagePreviewed(result);
-                                        }
-                                    }, mhandler);
+                                    mPreviewSession.setRepeatingRequest(mCaptureRequest, null, mhandler);
 
                                 } catch (CameraAccessException e) {
                                     e.printStackTrace();
@@ -340,8 +365,94 @@ public class LoginActivity extends BasicActivity {
         }
     }
 
+    //设置图片读取监听
+    void setupImageReader() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            //前三个参数分别是需要的尺寸和格式，最后一个参数代表每次最多获取几帧数据，本例的2代表ImageReader中最多可以获取两帧图像流
+//
+//            mImageReader = ImageReader.newInstance(mPreviewSize.getWidth() / 10, mPreviewSize.getHeight() / 10,
+//                    ImageFormat.YUV_420_888, 1);
+
+
+            int width = mPreviewSize.getWidth();
+            int height = mPreviewSize.getHeight();
+            int scale = 10;
+            mImageReader = ImageReader.newInstance(width / scale, height / scale,
+                    ImageFormat.YUV_420_888, 1);
+
+
+            //监听ImageReader的事件，当有图像流数据可用时会回调onImageAvailable方法，它的参数就是预览帧数据，可以对这帧数据进行处理
+            mImageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                @Override
+                public void onImageAvailable(final ImageReader reader) {
+                    final Image image = reader.acquireNextImage();
+                    if (
+                        //have_face == 0 ||
+                            is_match == true) {
+                        image.close();
+                    } else {
+                        //have_face -= 1;
+                        is_match = true;
+
+                        long mi1 = System.currentTimeMillis();
+                        final Bitmap map = c.org.android_inface.face.yuv_to_bitmap(image);
+                        long mi12 = System.currentTimeMillis();
+                        final long mi13 = mi12 - mi1;
+                        image.close();
+
+//                        FileOutputStream outputStream = null;
+//                        try {
+//                            outputStream = new FileOutputStream(new File( System.getenv("EXTERNAL_STORAGE") +"/"+ "2.jpg"));
+//                            map.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
+//                        } catch (FileNotFoundException e) {
+//                            e.printStackTrace();
+//                        }
+
+                        c.org.android_inface.face.init("remote", "http://111.231.249.197:8885");
+                        c.org.android_inface.face.match(map
+                                , new face_callback() {
+                                    @Override
+                                    public void onSuccess(face_model.success success) {
+
+                                        if(main.isFinishing()==true)return;
+
+                                        closeCamera();
+                                        SetToken(success.getFace_id() + "");
+                                        Intent in = new Intent();
+                                        in.setClassName(getApplicationContext(), "com.chunyun.android.MainActivity");
+                                        startActivity(in);
+                                        main.finish();
+                                        is_match = false;
+                                    }
+
+                                    @Override
+                                    public void onFailed(face_model.fail fail) {
+                                        is_match = false;
+                                    }
+                                });
+                    }
+                }
+            }, mhandler2);
+        }
+    }
+
+    private static final SparseIntArray ORIENTATION = new SparseIntArray();
+    static {
+        //后置
+//        ORIENTATION.append(Surface.ROTATION_0, 90);
+//        ORIENTATION.append(Surface.ROTATION_90, 0);
+//        ORIENTATION.append(Surface.ROTATION_180, 270);
+//        ORIENTATION.append(Surface.ROTATION_270, 180);
+
+        //前置
+        ORIENTATION.append(Surface.ROTATION_0, 270);
+        ORIENTATION.append(Surface.ROTATION_90, 0);
+        ORIENTATION.append(Surface.ROTATION_180, 90);
+        ORIENTATION.append(Surface.ROTATION_270, 180);
+    }
+
     /**
-     * 处理相机画面处理完成事件，获取检测到的人脸坐标，换算并绘制方框
+     * 处理相机画面处理完成事件，获取检测到的人脸坐标，换算并绘制方框(安卓camrea2自带方法，就是速度有点慢)
      *
      * @param result
      */
@@ -395,98 +506,4 @@ public class LoginActivity extends BasicActivity {
         }
     }
 
-    void restartPreview() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            try {
-                //执行setRepeatingRequest方法就行了，注意mCaptureRequest是之前开启预览设置的请求
-                mPreviewSession.setRepeatingRequest(mCaptureRequest, null, mhandler);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-            }
-        } else {
-
-        }
-    }
-
-    void setupImageReader() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            //前三个参数分别是需要的尺寸和格式，最后一个参数代表每次最多获取几帧数据，本例的2代表ImageReader中最多可以获取两帧图像流
-//
-//            mImageReader = ImageReader.newInstance(mPreviewSize.getWidth() / 10, mPreviewSize.getHeight() / 10,
-//                    ImageFormat.YUV_420_888, 1);
-
-
-            int width = mPreviewSize.getWidth();
-            int height = mPreviewSize.getHeight();
-            int scale = 10;
-            mImageReader = ImageReader.newInstance(width / scale, height / scale,
-                    ImageFormat.YUV_420_888, 1);
-
-
-            //监听ImageReader的事件，当有图像流数据可用时会回调onImageAvailable方法，它的参数就是预览帧数据，可以对这帧数据进行处理
-            mImageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
-                @Override
-                public void onImageAvailable(final ImageReader reader) {
-                    final Image image = reader.acquireNextImage();
-                    if (
-                        //have_face == 0 ||
-                            is_match == true) {
-                        image.close();
-                    } else {
-                        //have_face -= 1;
-                        is_match = true;
-
-                        long mi1 = System.currentTimeMillis();
-                        final Bitmap map = c.org.android_inface.face.yuv_to_bitmap(image);
-                        long mi12 = System.currentTimeMillis();
-                        final long mi13 = mi12 - mi1;
-                        image.close();
-
-//                        FileOutputStream outputStream = null;
-//                        try {
-//                            outputStream = new FileOutputStream(new File( System.getenv("EXTERNAL_STORAGE") +"/"+ "2.jpg"));
-//                            map.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
-//                        } catch (FileNotFoundException e) {
-//                            e.printStackTrace();
-//                        }
-
-                        c.org.android_inface.face.init("remote", "http://111.231.249.197:8885");
-                        c.org.android_inface.face.match(map
-                                , new face_callback() {
-                                    @Override
-                                    public void onSuccess(face_model.success success) {
-                                        is_match = false;
-                                       // mPreviewSession.close();
-                                        SetToken(success.getFace_id() + "");
-                                        Intent in = new Intent();
-                                        in.setClassName(getApplicationContext(), "com.chunyun.android.MainActivity");
-                                        startActivity(in);
-                                        main.finish();
-                                    }
-
-                                    @Override
-                                    public void onFailed(face_model.fail fail) {
-                                        is_match = false;
-                                    }
-                                });
-                    }
-                }
-            }, mhandler2);
-        }
-    }
-
-    private static final SparseIntArray ORIENTATION = new SparseIntArray();
-    static {
-        //后置
-//        ORIENTATION.append(Surface.ROTATION_0, 90);
-//        ORIENTATION.append(Surface.ROTATION_90, 0);
-//        ORIENTATION.append(Surface.ROTATION_180, 270);
-//        ORIENTATION.append(Surface.ROTATION_270, 180);
-
-        //前置
-        ORIENTATION.append(Surface.ROTATION_0, 270);
-        ORIENTATION.append(Surface.ROTATION_90, 0);
-        ORIENTATION.append(Surface.ROTATION_180, 90);
-        ORIENTATION.append(Surface.ROTATION_270, 180);
-    }
 }
