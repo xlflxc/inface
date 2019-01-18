@@ -408,7 +408,7 @@ public class LoginActivity extends BasicActivity {
 //                            e.printStackTrace();
 //                        }
 
-                        c.org.android_inface.face.init("remote", "http://111.231.249.197:8885");
+                        c.org.android_inface.face.init("remote", "http://111.231.249.197:8887");
                         c.org.android_inface.face.match(map
                                 , new face_callback() {
                                     @Override
