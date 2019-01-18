@@ -3,6 +3,7 @@ package com.chunyun.android;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -41,6 +42,7 @@ import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
 import android.view.TextureView;
+import android.view.View;
 import android.widget.Toast;
 
 import com.chunyun.android.service.HttpHelper;
@@ -50,6 +52,7 @@ import com.chunyun.android.service.model.GetHostBoxListResponse;
 import com.chunyun.android.util.EasyPermissions;
 import com.chunyun.android.util.ImageUtil;
 import com.umeng.socialize.utils.UmengText;
+import com.xialf.www.ui.BUTTON;
 import com.xialf.www.ui.LAYOUT;
 import com.xialf.www.ui.LAYOUT_TYPE;
 
@@ -57,6 +60,7 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.Console;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -79,12 +83,38 @@ import retrofit2.Response;
 public class LoginActivity extends BasicActivity {
 
     Activity main;
+    int leave=15;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         main=this;
         goMain();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (leave>0) {
+                    leave -= 1;
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if (mPreviewSession != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        mPreviewSession.close();
+                    }
+
+                    if(GetToken()==null) {
+                        Intent in = new Intent();
+                        in.setClassName(getApplicationContext(), "com.chunyun.android.WaitActivity");
+                        startActivity(in);
+                    }
+                }
+            }
+        }).start();
     }
 
     void goMain() {
@@ -117,6 +147,22 @@ public class LoginActivity extends BasicActivity {
 
             }
         });
+
+        layout.findItem("top").setContent(new BUTTON(main,"注册人脸")
+        .setClick(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if( mPreviewSession!=null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        mPreviewSession.close();
+                    }
+                }
+
+                Intent in = new Intent();
+                in.setClassName(getApplicationContext(), "com.chunyun.android.RegisterActivity");
+                startActivity(in);
+            }
+        }));
         layout.findItem("bottom").setContent(mPreviewView);
         layout.render();
 
@@ -370,12 +416,11 @@ public class LoginActivity extends BasicActivity {
 //                    ImageFormat.YUV_420_888, 1);
 
 
-            int width=mPreviewSize.getWidth();
-            int height=mPreviewSize.getHeight();
-            int scale=10;
-            mImageReader = ImageReader.newInstance(width/scale,height/scale,
+            int width = mPreviewSize.getWidth();
+            int height = mPreviewSize.getHeight();
+            int scale = 10;
+            mImageReader = ImageReader.newInstance(width / scale, height / scale,
                     ImageFormat.YUV_420_888, 1);
-
 
 
             //监听ImageReader的事件，当有图像流数据可用时会回调onImageAvailable方法，它的参数就是预览帧数据，可以对这帧数据进行处理
@@ -384,7 +429,7 @@ public class LoginActivity extends BasicActivity {
                 public void onImageAvailable(final ImageReader reader) {
                     final Image image = reader.acquireNextImage();
                     if (
-                            //have_face == 0 ||
+                        //have_face == 0 ||
                             is_match == true) {
                         image.close();
                     } else {
@@ -392,25 +437,38 @@ public class LoginActivity extends BasicActivity {
                         is_match = true;
 
                         long mi1 = System.currentTimeMillis();
-                        Bitmap map= c.org.android_inface.face.yuv_to_bitmap(image);
+                        final Bitmap map = c.org.android_inface.face.yuv_to_bitmap(image);
                         long mi12 = System.currentTimeMillis();
                         final long mi13 = mi12 - mi1;
                         image.close();
 
-                        c.org.android_inface.face.init("remote","http://111.231.249.197:8885");
+//                        FileOutputStream outputStream = null;
+//                        try {
+//                            outputStream = new FileOutputStream(new File( System.getenv("EXTERNAL_STORAGE") +"/"+ "2.jpg"));
+//                            map.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
+//                        } catch (FileNotFoundException e) {
+//                            e.printStackTrace();
+//                        }
+
+                        c.org.android_inface.face.init("remote", "http://111.231.249.197:8885");
                         c.org.android_inface.face.match(map
                                 , new face_callback() {
-                            @Override
-                            public void onSuccess(face_model.success success) {
-                                is_match=false;
-                                showToast("识别到["+"]");
-                            }
+                                    @Override
+                                    public void onSuccess(face_model.success success) {
+                                        is_match = false;
+                                       // mPreviewSession.close();
+                                        SetToken(success.getFace_id() + "");
+                                        Intent in = new Intent();
+                                        in.setClassName(getApplicationContext(), "com.chunyun.android.MainActivity");
+                                        startActivity(in);
+                                        main.finish();
+                                    }
 
-                            @Override
-                            public void onFailed(face_model.fail fail) {
-                                is_match=false;
-                            }
-                        });
+                                    @Override
+                                    public void onFailed(face_model.fail fail) {
+                                        is_match = false;
+                                    }
+                                });
                     }
                 }
             }, mhandler2);
